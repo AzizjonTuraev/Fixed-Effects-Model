@@ -1,0 +1,222 @@
+---
+title: "Dev.Econ"
+author: "Aziz"
+date: '2022-07-15'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+```
+
+Calling the libraries
+
+```{r}
+library(here)
+library(haven)
+library(dplyr)
+library(tidyr)
+library(plm)
+library(fixest)
+library(Hmisc)
+library(modelsummary)
+```
+
+Showing the path to the data file
+
+```{r cars}
+
+here::i_am("model_replication.Rmd")
+dir_data    <- here("../data")
+dir_graph_data <- here("../graph")
+
+
+```
+
+Reading ethnic data and cleaning
+
+```{r}
+filename <- "ethnicinflow.dta"
+
+ethnic <- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" )) %>%
+  select(
+    ethnicinflow, c(-"county_type", -"state")) %>%
+  mutate(
+    lag_ethnic1 = Lag(ethnicinflow))%>%
+  filter(year %in% c(1994:2006))
+
+```
+
+Reading crime data and cleaning
+
+First I am lagging and then slicing the period 1996 - 2006. That's why, even though counties get the lagged data for 1995 from another county in 2006, it will not create a problem of mixing data among counties. Because then I am trimming the necessary period interval from 1994 to 2006.
+
+This rule applies to all the formulas where lag is used
+
+```{r}
+filename <- "crime.dta"
+
+crime<- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" ))%>%
+  arrange(id, year)%>%
+  select(2,3,5,6,29,25)%>%
+  mutate(
+    change_clear_up <- (dr_offense - Lag(dr_offense,1))/100,
+    change_crime <- offense_total - Lag(offense_total,1))%>%
+  filter(year %in% c(1996:2005))
+
+
+colnames(crime)[5:8] <- c("reported", "clear_up", "change_clear_up", "change_crime")
+
+```
+
+Reading population data and cleaning
+
+```{r}
+filename <- "population.dta"
+
+population <- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" ))%>%
+  select(c(-"county_type")) %>%
+  arrange(id, year) %>%
+  mutate(
+         foreign_share = poptotalforeign / poptotal,
+         lag_pop1 = Lag(poptotal),
+         lag_pop2 = Lag(poptotal,2),
+         change_shareforeigners= foreign_share - Lag(foreign_share),
+         change_logpop=log(poptotal)-log(lag_pop1)) %>%
+  filter(year %in% c(1996:2006))
+
+```
+
+Reading agestructure data and cleaning
+
+```{r}
+filename <- "agestructure.dta"
+
+agestructure <- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" ))%>%
+  arrange(id, year)%>%
+  mutate(
+    pop15_39 = pop15_17M + pop18_19M + pop20_24M + pop25_29M + pop30_34M + pop35_39M,
+    lag_pop15_39 = Lag(pop15_39),
+    pop15_64 = pop15_17M + pop18_19M + pop20_24M + pop25_29M + pop30_34M + pop35_39M + 
+                          pop40_44M + pop45_49M + pop50_54M + pop55_59M + pop60_64M,
+    lag_pop15_64 = Lag(pop15_64)) %>%
+  select(1,2,57,58,59,60)
+
+```
+
+Reading GDP data and cleaning
+
+Below, all formulas in the form of change_x = x - lag(x) captures the change of x compared to the previous year
+
+```{r}
+filename <- "gdp.dta"
+
+gdp <- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" )) %>%
+  arrange(id, year) %>%
+  mutate(
+    change_loggdp_percap = log(gdpcapita) - Lag(log(gdpcapita))) %>%
+  filter(year %in% c(1996:2006)) %>%
+  select(c("id", "year", "change_loggdp_percap"))
+
+```
+
+Reading unemployment data and cleaning
+
+```{r}
+filename <- "unemployment.dta"
+
+unemployment <- read_dta(paste( dir_data, filename, collapse = " + ", sep = "/" )) %>% 
+  arrange(id, year) %>% 
+  mutate(
+    change_unemploy = alq_dep_A - Lag(alq_dep_A)) %>%
+  select("id", "year", "change_unemploy") %>%
+  filter(year %in% c(1996:2006))
+  
+```
+
+creating main variables: y and x
+
+```{r}
+main_var <- left_join(
+  crime, 
+  select(population, -c("state", "county")), by=c("id", "year")) %>%
+  mutate(y = change_crime / lag_pop1)%>%        
+                                      # y is the dependent variable in question
+  left_join(select(ethnic, -c("county")), by=c("id", "year")) %>%
+  mutate(inflowrate = lag_ethnic1 / lag_pop2) 
+                                      # inflowrate is the main x variable in question
+
+```
+
+Compiling other data in a data frame, X_data
+
+```{r}
+X_data <- left_join(
+  population, agestructure, by=c("id", "year")) %>%
+  mutate(
+    change_shareyoungM = (pop15_39 / poptotal) - (lag_pop15_39 / lag_pop1),
+    change_shareM = (pop15_64 / poptotal) - (lag_pop15_64 / lag_pop1)) %>%
+  left_join(
+    gdp, by=c("id", "year"))%>%
+  left_join(
+    unemployment, by=c("id", "year"))%>%
+  filter(year %in% c(1996:2006))
+
+```
+
+final data set
+
+```{r}
+# selecting necessary columns from X_data to merge easily
+temp <- select(X_data, "id", "year", "change_logpop", "change_loggdp_percap", 
+            "change_unemploy", "change_shareforeigners", "change_shareyoungM", "change_shareM")
+
+final_data <-  select(main_var, "id", "year", "state", "county", "y", "inflowrate", "change_clear_up")%>%
+  left_join(temp, by= c("id", "year"))%>%
+  as.data.frame(final_data)
+
+```
+
+Running fixed effect regression models
+
+```{r}
+
+flm_model <- feols(y ~ inflowrate + change_logpop + change_loggdp_percap +
+                 change_unemploy + change_shareforeigners +
+                 change_shareyoungM + change_clear_up | state ^ year + county, vcov = (cluster = "twoway"), 
+                 data = drop_na(final_data))
+
+
+flm_model2 <- feols(y ~ inflowrate + change_logpop + change_loggdp_percap +
+                 change_unemploy + change_shareforeigners +
+                 change_shareyoungM + change_clear_up | state + year + county,  cluster = c("state", "id", "year"),
+                 data = drop_na(final_data))
+
+
+flm_model3 <- feols(y ~ inflowrate + change_logpop + change_loggdp_percap +
+                 change_unemploy + change_shareforeigners +
+                 change_shareM + change_clear_up | state ^ year + county, vcov = (cluster = "twoway"), 
+                 data = drop_na(final_data))
+
+
+
+cm <- c('inflowrate' = "Ethnic German inflow rate (t-1)",
+        'change_logpop' = "Change in Log pop (t)",
+        "change_loggdp_percap" = "Change in Log GDP per capita (t)",
+        "change_unemploy" = "Change in unemployment rate (t)",
+        "change_shareforeigners" = "Change in foreigners share (t)",
+        "change_shareyoungM" = "Change in young male's share (aged 15-39) (t)",
+        "change_shareM" = "Change in male's share (aged 15-64) (t)",
+        "change_clear_up" = "Change in clear-up rate (t)")
+
+
+models <- list("Model 1"=flm_model,
+               "Model 2 (fixed effects)"=flm_model2,
+               "Model 3 (age15_64)" = flm_model3)
+
+
+modelsummary(models, stars = T,  gof_omit = "AIC|BIC|RMSE", coef_map = cm, title = "Table 1")
+
+```
+

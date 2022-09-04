@@ -1,0 +1,110 @@
+---
+title: "Dev.Econ"
+author: "Aziz"
+date: '2022-07-15'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+```
+
+Calling the libraries
+
+```{r}
+library(here)
+library(dplyr)
+library(ggplot2)   # for graphs
+library(scales)    # for graphs
+```
+
+Showing the path to the data file
+
+```{r cars}
+
+here::i_am("graphs.Rmd")
+dir_data    <- here("../data")
+dir_graph_data <- here("../graph")
+
+
+```
+
+
+Here, I am importing, cleaning and merging the data from a website, WordlPopulationReview
+
+```{r cars}
+filename <- "historical_data.csv"
+histData <- read.csv(here(filename))
+
+names(histData)[1]<-"year"
+
+filename <- "projected_data.csv"
+predData <- read.csv(here(filename))
+
+names(predData)[1]<-"year"
+histData <- histData %>% arrange(year)
+
+fullData <- rbind(histData, predData)
+
+```
+
+Here, I am plotting the graph of the hist and projected data of the German population
+
+```{r pressure, echo=FALSE}
+ggplot(fullData, aes(year, TotalPopulation))+
+  geom_line()+
+  theme_bw()+
+  scale_x_continuous(breaks = seq(1950,2100, by=15))+
+  scale_y_continuous(limits = c(70000, 85000))+
+  xlab("Years")+
+  ylab("Population")+
+  ggtitle("Historical and Projected data about German Population from 1950 to 2100 ")
+  
+
+```
+
+
+Data is gathered by World Migration 2022 Report Journal
+
+```{r cars}
+year <-  seq(1970, 2020, by=5)
+migrants <- c(84460125, 90368010, 101983149, 113206691, 152986157, 161289976, 173230585, 
+              191446828, 220983187 , 247958644, 280598105)
+share <- c(2.3, 2.2, 2.3, 2.3, 2.9, 2.8, 2.8, 2.9, 3.2, 3.4, 3.6)
+
+migration_data <- cbind(year, migrants, share)
+
+migration_data <- as.data.frame(migration_data)
+
+
+```
+
+Plotting a graph
+
+```{r}
+par(mar=c(5,4,4,4))
+plot(year, migrants / 1000000, type = "l", ylab = "Number of Migrants (in millions)", las = 1, 
+     xlab = "Years"  ,main = "Migration data from 1970 to 2020", axes = F)
+axis(1,
+     col = "blue",        # Axis line color
+     col.ticks = "green", # Ticks color
+     col.axis = "dark blue")    # Labels color
+axis(2,
+     col = "blue",        # Axis line color
+     col.ticks = "green", # Ticks color
+     col.axis = "black",
+     las = 1, at= 80:300)    # Labels color
+par(new = T)
+#lines(year, share)
+plot(year, share, col="red", axes = F, xlab = "", ylab = "", type = "b")
+axis(4,
+     col = "blue",        # Axis line color
+     col.ticks = "green", # Ticks color
+     col.axis = "red",    # Labels color
+     las = 1)    
+mtext("Share of the world population", side = 4, line = 3)
+grid()
+text(10,5, "Source: World Migration Report 2022")
+
+```
