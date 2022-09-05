@@ -1,4 +1,4 @@
-# Fixed-Effects-Model
+# R_Fixed-Effects-Model
 
 This project replicates a fixed effect model of a paper by Marc Piopiunik and Jens Ruhose's papers of Immigration: Regional Conditions, and Crime: Evidence from an allocation policy in Germany and creates additional models using their dataset, and contains codes to illustrate graphs using immigration-related data.
 The project is done in R programming.
